@@ -1,0 +1,260 @@
+{
+  "llm": {
+    "contentModel": "gpt-4o-mini",
+    "contentTemperature": 0.7,
+    "topicModel": "gpt-4o-mini",
+    "topicTemperature": 0.7,
+    "seoModel": "gpt-4o-mini",
+    "seoTemperature": 0.4,
+    "imagePlannerModel": "gpt-4o-mini",
+    "imagePlannerTemperature": 0.25
+  },
+  "content": {
+    "systemRolePrompt": "Bạn là chuyên gia viết blog SEO cho website nông nghiệp.",
+    "mandatoryRequirements": [
+      "Độ dài 1200-1500 từ.",
+      "Có cấu trúc H1/H2/H3 rõ ràng.",
+      "Tích hợp từ khóa chính tự nhiên.",
+      "Có mẹo thực tế để áp dụng ngay.",
+      "Văn phong dễ đọc, hữu ích.",
+      "Kết bài có tóm tắt.",
+      "Đa dạng khung bài viết giữa các lần tạo.",
+      "Không lặp một khung heading cố định.",
+      "Tránh lặp lại cụm từ cần tránh."
+    ],
+    "styleProfiles": [
+      "Giọng tư vấn thực chiến, ngắn gọn.",
+      "Giọng chuyên gia kỹ thuật dễ hiểu.",
+      "Giọng phân tích dữ liệu thực tế.",
+      "Giọng đồng hành cùng nông hộ.",
+      "Giọng so sánh ưu nhược điểm."
+    ]
+  },
+  "workflow": {
+    "styleBlueprints": [
+      "Khung vấn đề-nguyên nhân-giải pháp.",
+      "Khung hướng dẫn từng bước theo timeline.",
+      "Khung sai lầm thường gặp và khắc phục.",
+      "Khung hỏi đáp + so sánh + lời khuyên.",
+      "Khung case study gia đình."
+    ],
+    "templateVariations": [
+      "Template A: bối cảnh -> 3 phần -> kết luận.",
+      "Template B: câu hỏi lớn -> nguyên nhân -> giải pháp.",
+      "Template C: lỗi phổ biến -> chẩn đoán -> kế hoạch.",
+      "Template D: bảng tiêu chí -> khuyến nghị.",
+      "Template E: mini case study -> bài học -> takeaway."
+    ]
+  },
+  "topic": {
+    "strategyPrompt": "You are a content strategist for an agriculture knowledge and ecommerce website.",
+    "requiredIntents": [
+      "informational",
+      "commercial investigation",
+      "transactional support",
+      "troubleshooting",
+      "seasonal planning"
+    ],
+    "requiredFormats": [
+      "step-by-step guide",
+      "mistakes list",
+      "FAQ",
+      "comparison table",
+      "case-study",
+      "tips summary"
+    ],
+    "topicsPerRun": 5
+  },
+  "seo": {
+    "systemPrompt": "Bạn là chuyên gia SEO cho website bán đất hữu cơ.",
+    "metadataInstruction": "Tối ưu metadata SEO và trả về bằng tiếng Việt.",
+    "jsonSchemaLines": [
+      "{",
+      "\"seoTitle\": \"string\",",
+      "\"metaDescription\": \"string\",",
+      "\"tags\": [\"string\"],",
+      "\"summary\": \"string\"",
+      "}"
+    ],
+    "rules": [
+      "seoTitle tối đa 60 ký tự.",
+      "metaDescription 140-160 ký tự.",
+      "tags từ 5 đến 8 thẻ.",
+      "summary ngắn gọn, đúng trọng tâm."
+    ]
+  },
+  "image": {
+    "plannerPromptAddon": "Ưu tiên ảnh sát ngữ cảnh nông nghiệp Việt Nam.",
+    "defaultFallbackQuery": "organic farming soil",
+    "minInlineImages": 1,
+    "maxInlineImages": 3,
+    "providerOrder": [
+      "pexels",
+      "fallback"
+    ],
+    "keywordRules": [
+      {
+        "pattern": "(tuoi nuoc dung cach|tuoi nuoc|tuoi tieu|he thong tuoi|tuoi nho giot|tuoi phun|irrigation)",
+        "keyword": "irrigation system"
+      },
+      {
+        "pattern": "(loai cay trong|giong cay|cay trong theo loai|type of plant|plants?)",
+        "keyword": "type of plants"
+      },
+      {
+        "pattern": "(dat huu co|dat trong|soil)",
+        "keyword": "organic soil"
+      },
+      {
+        "pattern": "(phan bon huu co|phan bon|compost|fertilizer)",
+        "keyword": "organic fertilizer"
+      },
+      {
+        "pattern": "(sau benh|sau hai|pest|disease)",
+        "keyword": "pest control"
+      },
+      {
+        "pattern": "(vuon nha|vuon|garden)",
+        "keyword": "home garden"
+      },
+      {
+        "pattern": "(nong nghiep huu co|canh tac huu co|organic farming)",
+        "keyword": "organic farming"
+      },
+      {
+        "pattern": "(mua mua|thoat nuoc|drainage)",
+        "keyword": "garden drainage"
+      },
+      {
+        "pattern": "(hat giong|gieo hat|seedling|seed)",
+        "keyword": "plant seedlings"
+      },
+      {
+        "pattern": "(u phan|u compost|lam compost|composting)",
+        "keyword": "composting organic waste"
+      },
+      {
+        "pattern": "(che phu dat|phu rom|mulch|mulching)",
+        "keyword": "mulching garden soil"
+      },
+      {
+        "pattern": "(luan canh|xen canh|crop rotation|intercropping)",
+        "keyword": "crop rotation farming"
+      },
+      {
+        "pattern": "(nha luoi|nha mang|greenhouse|net house)",
+        "keyword": "greenhouse vegetable farming"
+      },
+      {
+        "pattern": "(thuy canh|hydroponic|hydroponics)",
+        "keyword": "hydroponic vegetable system"
+      },
+      {
+        "pattern": "(gia the|xo dua|coir|substrate)",
+        "keyword": "coco coir growing media"
+      },
+      {
+        "pattern": "(phan trun que|vermicompost|earthworm compost)",
+        "keyword": "vermicompost organic fertilizer"
+      },
+      {
+        "pattern": "(vi sinh|microbial|beneficial bacteria)",
+        "keyword": "beneficial soil microbes"
+      },
+      {
+        "pattern": "(nha trong cay|v\u01b0\u1eddn san thuong|vuon ban cong|urban farming)",
+        "keyword": "urban rooftop garden"
+      },
+      {
+        "pattern": "(rau an la|x\u00e0 lach|cai xanh|leafy greens)",
+        "keyword": "leafy greens cultivation"
+      },
+      {
+        "pattern": "(ca chua|dua leo|ot|tomato|cucumber|chili)",
+        "keyword": "vegetable trellis cultivation"
+      },
+      {
+        "pattern": "(co dai|lam co|weed control|weed)",
+        "keyword": "organic weed control"
+      },
+      {
+        "pattern": "(thu hoach|bao quan|sau thu hoach|post harvest)",
+        "keyword": "post harvest handling"
+      },
+      {
+        "pattern": "(phong benh|nam benh|fungus|blight|powdery mildew)",
+        "keyword": "plant disease prevention"
+      },
+      {
+        "pattern": "(phan huu co vi sinh|bio fertilizer|biofertilizer)",
+        "keyword": "biofertilizer application"
+      }
+    ],
+    "tokenTranslationMap": {
+      "tuoi": "irrigation",
+      "tieu": "irrigation",
+      "he": "system",
+      "thong": "system",
+      "nho": "drip",
+      "giot": "drip",
+      "phun": "sprinkler",
+      "loai": "type",
+      "giong": "variety",
+      "cay": "plants",
+      "trong": "planting",
+      "vuon": "garden",
+      "nha": "home",
+      "dat": "soil",
+      "huu": "organic",
+      "co": "organic",
+      "phan": "fertilizer",
+      "bon": "fertilizer",
+      "sau": "pest",
+      "benh": "disease",
+      "nong": "agriculture",
+      "nghiep": "agriculture",
+      "mua": "rain",
+      "thoat": "drainage",
+      "nuoc": "water",
+      "hat": "seed",
+      "gieo": "sowing",
+      "mam": "seedling",
+      "gia": "substrate",
+      "the": "substrate",
+      "xo": "coir",
+      "dua": "coir",
+      "u": "composting",
+      "rom": "straw",
+      "che": "mulch",
+      "phu": "mulch",
+      "luan": "rotation",
+      "xen": "intercrop",
+      "canh": "cultivation",
+      "luoi": "net",
+      "mang": "greenhouse",
+      "thuy": "hydroponic",
+      "rau": "vegetable",
+      "la": "leafy",
+      "quay": "bed",
+      "luong": "bed",
+      "thu": "harvest",
+      "hoach": "harvest",
+      "bao": "storage",
+      "quan": "storage",
+      "vi": "microbial",
+      "sinh": "microbial",
+      "trun": "worm",
+      "que": "worm",
+      "nam": "fungus",
+      "co_dai": "weed",
+      "lam": "control"
+    },
+    "pexels": {
+      "endpoint": "https://api.pexels.com/v1/search",
+      "perPage": 12,
+      "orientation": "landscape",
+      "size": "large",
+      "timeoutMs": 9000
+    }
+  }
+}

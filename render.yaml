@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: ai-marketing-agent
+    runtime: node
+    plan: free
+    rootDir: ai-marketing-agent
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: NEWS_PUBLISH_CRON_ENABLED
+        value: true
+      - key: NEWS_PUBLISH_CRON
+        value: "0 10 * * *"
+      - key: NEWS_PUBLISH_CRON_TIMEZONE
+        value: Asia/Ho_Chi_Minh
+      - key: NEWS_PUBLISH_ON_STARTUP
+        value: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+      - key: API_BASE_URL
+        sync: false
+      - key: AGENT_EMAIL
+        sync: false
+      - key: AGENT_PASSWORD
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: REVIEWER_EMAIL
+        sync: false
+      - key: DEFAULT_NEWS_CATEGORY_ID
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
