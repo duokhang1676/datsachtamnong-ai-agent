@@ -65,6 +65,69 @@ const createGmailTransporter = () => {
 	return nodemailer.createTransport(transportOptions);
 };
 
+const shouldRetryWithFallback = (error: unknown): boolean => {
+	const maybe = error as any;
+	const code = typeof maybe?.code === "string" ? maybe.code.trim().toUpperCase() : "";
+	return code === "ETIMEDOUT" || code === "ENETUNREACH" || code === "ECONNRESET";
+};
+
+const createGmailFallbackTransporter = () => {
+	const user = process.env.EMAIL_USER;
+	const pass = process.env.EMAIL_PASS;
+
+	if (!user || !pass) {
+		throw new Error("EMAIL_USER and EMAIL_PASS must be set.");
+	}
+
+	const smtpHost = (process.env.SMTP_HOST ?? "smtp.gmail.com").trim();
+	const fallbackPort = Number(process.env.SMTP_FALLBACK_PORT ?? 587);
+
+	const transportOptions: any = {
+		host: smtpHost,
+		port: Number.isFinite(fallbackPort) ? fallbackPort : 587,
+		secure: false,
+		auth: {
+			user,
+			pass
+		},
+		connectionTimeout: 15000,
+		greetingTimeout: 15000,
+		socketTimeout: 20000,
+		tls: {
+			servername: smtpHost
+		}
+	};
+
+	// Keep fallback path on IPv4 for cloud providers where IPv6 SMTP route is unstable.
+	transportOptions.lookup = (
+		hostname: string,
+		_options: any,
+		callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+	) => {
+		dns.lookup(hostname, { family: 4 }, callback);
+	};
+
+	return nodemailer.createTransport(transportOptions);
+};
+
+const sendMailWithRetry = async (mailOptions: nodemailer.SendMailOptions): Promise<void> => {
+	const primary = createGmailTransporter();
+
+	try {
+		await primary.sendMail(mailOptions);
+		return;
+	} catch (error) {
+		if (!shouldRetryWithFallback(error)) {
+			throw error;
+		}
+
+		console.warn("[emailService] Primary SMTP connection failed, retry with fallback config.", error);
+	}
+
+	const fallback = createGmailFallbackTransporter();
+	await fallback.sendMail(mailOptions);
+};
+
 const getApprovalBaseUrl = (): string => {
 	const defaultAgentPort = (process.env.PORT ?? "4000").trim() || "4000";
 	const base = (
@@ -89,10 +152,9 @@ export async function sendApprovalEmail(data: any): Promise<void> {
 	const finalApproveLink = approveLink ?? `${baseUrl}/approve/${id}`;
 	const finalRejectLink = rejectLink ?? `${baseUrl}/reject/${id}`;
 
-	const transporter = createGmailTransporter();
 	const from = process.env.EMAIL_USER as string;
 
-	await transporter.sendMail({
+	await sendMailWithRetry({
 		from,
 		to: recipient,
 		subject: `Content Review: ${title}`,
@@ -130,10 +192,9 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 		throw new Error("articleUrl is required.");
 	}
 
-	const transporter = createGmailTransporter();
 	const from = process.env.EMAIL_USER as string;
 
-	await transporter.sendMail({
+	await sendMailWithRetry({
 		from,
 		to: recipient,
 		subject: `Bản tin đã đăng: ${title}`,
