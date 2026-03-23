@@ -167,18 +167,18 @@ const findParagraphInsertionPoints = (content: string): number[] => {
 
 const buildInlineImageBlock = (asset: ResolvedIllustrationAsset): string => {
   const titleText = asset.imageName.replace(/-/g, " ").trim();
-  const captionText = asset.sourceAlt && asset.sourceAlt.trim().length > 0
-    ? asset.sourceAlt.trim()
-    : asset.altText && asset.altText.trim().length > 0
-      ? asset.altText.trim()
+  const captionText = asset.altText && asset.altText.trim().length > 0
+    ? asset.altText.trim()
+    : asset.sourceAlt && asset.sourceAlt.trim().length > 0
+      ? `Mo ta anh goc: ${asset.sourceAlt.trim()}`
     : `Anh minh hoa: ${titleText}`;
   const creditText = asset.photographer && asset.photographer.trim().length > 0
     ? `Ảnh minh họa: Pexels - ${asset.photographer.trim()}`
     : "Ảnh minh họa: Pexels";
   const escapedCaption = captionText.replace(/"/g, "&quot;");
-  const effectiveAlt = (asset.sourceAlt && asset.sourceAlt.trim().length > 0
-    ? asset.sourceAlt
-    : asset.altText).trim();
+  const effectiveAlt = (asset.altText && asset.altText.trim().length > 0
+    ? asset.altText
+    : asset.sourceAlt ?? `Anh minh hoa: ${titleText}`).trim();
   const escapedAlt = effectiveAlt.replace(/"/g, "&quot;");
   const escapedImageName = asset.imageName.replace(/"/g, "&quot;");
   const escapedCredit = creditText.replace(/"/g, "&quot;");

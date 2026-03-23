@@ -582,7 +582,7 @@ export const resolveIllustrationAssets = async (
       url: picked.url,
       provider: picked.provider,
       imageName: slot.imageName,
-      altText: picked.alt && picked.alt.trim().length > 0 ? picked.alt.trim() : slot.altText,
+      altText: slot.altText,
       positionPercent: slot.positionPercent,
       sourceAlt: picked.alt,
       photographer: picked.photographer
