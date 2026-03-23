@@ -4,6 +4,11 @@ import dns from "node:dns";
 
 dotenv.config();
 
+// Prefer IPv4 globally to avoid cloud environments that cannot route IPv6 SMTP traffic.
+if (typeof dns.setDefaultResultOrder === "function") {
+	dns.setDefaultResultOrder("ipv4first");
+}
+
 export interface ApprovalEmailInput {
 	id: string;
 	title: string;
@@ -21,6 +26,21 @@ export interface PublishedEmailInput {
 	articleUrl: string;
 	to?: string;
 }
+
+const buildLookupByFamily = (forcedFamily: 4 | 6) => {
+	return (
+		hostname: string,
+		optionsOrCallback: any,
+		maybeCallback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+	) => {
+		const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
+		if (typeof callback !== "function") {
+			return;
+		}
+
+		dns.lookup(hostname, { family: forcedFamily, all: false, verbatim: false }, callback);
+	};
+};
 
 const createGmailTransporter = () => {
 	const user = process.env.EMAIL_USER;
@@ -53,13 +73,12 @@ const createGmailTransporter = () => {
 	};
 
 	if (smtpFamily) {
+		transportOptions.family = smtpFamily;
 		transportOptions.lookup = (
 			hostname: string,
-			_options: any,
-			callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
-		) => {
-			dns.lookup(hostname, { family: smtpFamily }, callback);
-		};
+			optionsOrCallback: any,
+			maybeCallback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+		) => buildLookupByFamily(smtpFamily as 4 | 6)(hostname, optionsOrCallback, maybeCallback);
 	}
 
 	return nodemailer.createTransport(transportOptions);
@@ -86,6 +105,7 @@ const createGmailFallbackTransporter = () => {
 		host: smtpHost,
 		port: Number.isFinite(fallbackPort) ? fallbackPort : 587,
 		secure: false,
+		family: 4,
 		auth: {
 			user,
 			pass
@@ -99,13 +119,7 @@ const createGmailFallbackTransporter = () => {
 	};
 
 	// Keep fallback path on IPv4 for cloud providers where IPv6 SMTP route is unstable.
-	transportOptions.lookup = (
-		hostname: string,
-		_options: any,
-		callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
-	) => {
-		dns.lookup(hostname, { family: 4 }, callback);
-	};
+	transportOptions.lookup = buildLookupByFamily(4);
 
 	return nodemailer.createTransport(transportOptions);
 };
