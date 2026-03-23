@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
+import dns from "node:dns";
 
 dotenv.config();
 
@@ -32,8 +33,10 @@ const createGmailTransporter = () => {
 	const smtpHost = (process.env.SMTP_HOST ?? "smtp.gmail.com").trim();
 	const smtpPort = Number(process.env.SMTP_PORT ?? 465);
 	const smtpSecure = String(process.env.SMTP_SECURE ?? "true").trim().toLowerCase() !== "false";
+	const smtpFamilyRaw = String(process.env.SMTP_FAMILY ?? "").trim();
+	const smtpFamily = smtpFamilyRaw === "4" ? 4 : smtpFamilyRaw === "6" ? 6 : undefined;
 
-	return nodemailer.createTransport({
+	const transportOptions: any = {
 		host: smtpHost,
 		port: Number.isFinite(smtpPort) ? smtpPort : 465,
 		secure: smtpSecure,
@@ -47,7 +50,19 @@ const createGmailTransporter = () => {
 		tls: {
 			servername: smtpHost
 		}
-	});
+	};
+
+	if (smtpFamily) {
+		transportOptions.lookup = (
+			hostname: string,
+			_options: any,
+			callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+		) => {
+			dns.lookup(hostname, { family: smtpFamily }, callback);
+		};
+	}
+
+	return nodemailer.createTransport(transportOptions);
 };
 
 const getApprovalBaseUrl = (): string => {
