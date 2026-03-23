@@ -96,6 +96,11 @@ const buildPublishedArticleUrl = (published: any): string => {
 	return `${baseUrl}/news`;
 };
 
+const isNotificationEmailDisabled = (): boolean => {
+	const raw = (process.env.DISABLE_NOTIFICATION_EMAIL ?? "").trim().toLowerCase();
+	return raw === "1" || raw === "true" || raw === "yes";
+};
+
 export type ContentWorkflowResult = z.infer<typeof outputSchema>;
 
 const loadMastraWorkflows = (): Promise<typeof import("@mastra/core/workflows")> => {
@@ -266,13 +271,19 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 
 			const articleUrl = buildPublishedArticleUrl(published);
 
-			await sendPublishedEmail({
-				title: seo.seoTitle,
-				summary: seo.summary,
-				categoryName: inputData.selectedCategory.name,
-				articleUrl,
-				to: process.env.EMAIL_USER
-			});
+			if (!isNotificationEmailDisabled()) {
+				try {
+					await sendPublishedEmail({
+						title: seo.seoTitle,
+						summary: seo.summary,
+						categoryName: inputData.selectedCategory.name,
+						articleUrl,
+						to: process.env.EMAIL_USER
+					});
+				} catch (error) {
+					console.warn("[content-workflow] Published article but failed to send notification email:", error);
+				}
+			}
 
 			return {
 				topic: inputData.topic,

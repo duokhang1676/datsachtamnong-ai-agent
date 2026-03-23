@@ -29,11 +29,23 @@ const createGmailTransporter = () => {
 		throw new Error("EMAIL_USER and EMAIL_PASS must be set.");
 	}
 
+	const smtpHost = (process.env.SMTP_HOST ?? "smtp.gmail.com").trim();
+	const smtpPort = Number(process.env.SMTP_PORT ?? 465);
+	const smtpSecure = String(process.env.SMTP_SECURE ?? "true").trim().toLowerCase() !== "false";
+
 	return nodemailer.createTransport({
-		service: "gmail",
+		host: smtpHost,
+		port: Number.isFinite(smtpPort) ? smtpPort : 465,
+		secure: smtpSecure,
 		auth: {
 			user,
 			pass
+		},
+		connectionTimeout: 15000,
+		greetingTimeout: 15000,
+		socketTimeout: 20000,
+		tls: {
+			servername: smtpHost
 		}
 	});
 };
