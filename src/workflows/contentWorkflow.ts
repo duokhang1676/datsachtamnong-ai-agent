@@ -101,6 +101,16 @@ const isNotificationEmailDisabled = (): boolean => {
 	return raw === "1" || raw === "true" || raw === "yes";
 };
 
+const getNotificationRecipient = (): string | null => {
+	const reviewer = (process.env.REVIEWER_EMAIL ?? "").trim();
+	if (reviewer) {
+		return reviewer;
+	}
+
+	const sender = (process.env.EMAIL_USER ?? "").trim();
+	return sender || null;
+};
+
 export type ContentWorkflowResult = z.infer<typeof outputSchema>;
 
 const loadMastraWorkflows = (): Promise<typeof import("@mastra/core/workflows")> => {
@@ -272,17 +282,24 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 			const articleUrl = buildPublishedArticleUrl(published);
 
 			if (!isNotificationEmailDisabled()) {
+				const recipient = getNotificationRecipient();
+				if (!recipient) {
+					console.warn("[content-workflow] Notification email skipped: REVIEWER_EMAIL/EMAIL_USER is not configured.");
+				} else {
 				try {
 					await sendPublishedEmail({
 						title: seo.seoTitle,
 						summary: seo.summary,
 						categoryName: inputData.selectedCategory.name,
 						articleUrl,
-						to: process.env.EMAIL_USER
+						to: recipient
 					});
 				} catch (error) {
 					console.warn("[content-workflow] Published article but failed to send notification email:", error);
 				}
+				}
+			} else {
+				console.info("[content-workflow] Notification email skipped: DISABLE_NOTIFICATION_EMAIL is enabled.");
 			}
 
 			return {
