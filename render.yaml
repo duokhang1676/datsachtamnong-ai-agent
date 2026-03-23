@@ -3,7 +3,7 @@ services:
     name: ai-marketing-agent
     runtime: node
     plan: free
-    rootDir: ai-marketing-agent
+    rootDir: .
     buildCommand: npm install && npm run build
     startCommand: npm run start
     healthCheckPath: /api/health

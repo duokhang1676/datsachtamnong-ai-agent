@@ -5,7 +5,8 @@
   "main": "dist/app.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/app.js",
+    "start": "tsx src/app.ts",
+    "start:dist": "node dist/app.js",
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
     "workflow:esm": "node --loader ts-node/esm --experimental-specifier-resolution=node src/testWorkflow.ts",
     "workflow": "npm run build && node dist/testWorkflow.js",
