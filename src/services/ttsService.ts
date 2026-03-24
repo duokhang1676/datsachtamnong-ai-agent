@@ -6,7 +6,7 @@ import crypto from "crypto";
 // Ensure audio directory exists
 const AUDIO_DIR = path.join(process.cwd(), "data", "audio");
 const DEFAULT_TTS_BASE_URL = "http://localhost:4000";
-const MAX_CHARS_PER_REQUEST = 4500;
+const MAX_BYTES_PER_REQUEST = 4800;
 
 let ttsClient: textToSpeech.TextToSpeechClient | null = null;
 
@@ -114,13 +114,89 @@ const resolveVoiceName = (languageCode: string): string => {
 	return "";
 };
 
-const chunkText = (input: string, maxChars: number): string[] => {
+const byteLength = (value: string): number => Buffer.byteLength(value, "utf8");
+
+const splitLongTextByBytes = (input: string, maxBytes: number): string[] => {
+	const words = input.split(/\s+/).filter(Boolean);
+	if (words.length === 0) {
+		return [];
+	}
+
+	const chunks: string[] = [];
+	let current = "";
+
+	for (const word of words) {
+		if (!current) {
+			if (byteLength(word) <= maxBytes) {
+				current = word;
+				continue;
+			}
+
+			// Extremely long token (no spaces): split by characters while honoring byte limit.
+			let token = "";
+			for (const char of word) {
+				const candidate = `${token}${char}`;
+				if (byteLength(candidate) <= maxBytes) {
+					token = candidate;
+					continue;
+				}
+
+				if (token) {
+					chunks.push(token);
+				}
+				token = char;
+			}
+
+			if (token) {
+				chunks.push(token);
+			}
+
+			continue;
+		}
+
+		const next = `${current} ${word}`;
+		if (byteLength(next) <= maxBytes) {
+			current = next;
+			continue;
+		}
+
+		chunks.push(current);
+		if (byteLength(word) <= maxBytes) {
+			current = word;
+			continue;
+		}
+
+		let token = "";
+		for (const char of word) {
+			const candidate = `${token}${char}`;
+			if (byteLength(candidate) <= maxBytes) {
+				token = candidate;
+				continue;
+			}
+
+			if (token) {
+				chunks.push(token);
+			}
+			token = char;
+		}
+
+		current = token;
+	}
+
+	if (current) {
+		chunks.push(current);
+	}
+
+	return chunks;
+};
+
+const chunkText = (input: string, maxBytes: number): string[] => {
 	const cleaned = input.replace(/\s+/g, " ").trim();
 	if (!cleaned) {
 		return [];
 	}
 
-	if (cleaned.length <= maxChars) {
+	if (byteLength(cleaned) <= maxBytes) {
 		return [cleaned];
 	}
 
@@ -134,32 +210,31 @@ const chunkText = (input: string, maxChars: number): string[] => {
 		}
 
 		if (!current) {
-			if (sentence.length <= maxChars) {
+			if (byteLength(sentence) <= maxBytes) {
 				current = sentence;
 				continue;
 			}
 
-			for (let i = 0; i < sentence.length; i += maxChars) {
-				chunks.push(sentence.slice(i, i + maxChars));
-			}
+			chunks.push(...splitLongTextByBytes(sentence, maxBytes));
 			continue;
 		}
 
 		const next = `${current} ${sentence}`;
-		if (next.length <= maxChars) {
+		if (byteLength(next) <= maxBytes) {
 			current = next;
 			continue;
 		}
 
 		chunks.push(current);
-		if (sentence.length <= maxChars) {
+		if (byteLength(sentence) <= maxBytes) {
 			current = sentence;
 			continue;
 		}
 
-		for (let i = 0; i < sentence.length; i += maxChars) {
-			const segment = sentence.slice(i, i + maxChars);
-			if (segment.length === maxChars) {
+		const longSegments = splitLongTextByBytes(sentence, maxBytes);
+		for (let i = 0; i < longSegments.length; i += 1) {
+			const segment = longSegments[i];
+			if (i < longSegments.length - 1) {
 				chunks.push(segment);
 			} else {
 				current = segment;
@@ -246,7 +321,7 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 
 	try {
 		const client = getTtsClient();
-		const chunks = chunkText(text, MAX_CHARS_PER_REQUEST);
+		const chunks = chunkText(text, MAX_BYTES_PER_REQUEST);
 		if (chunks.length === 0) {
 			throw new Error("Text is empty after normalization");
 		}
