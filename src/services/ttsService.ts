@@ -1,23 +1,175 @@
-import { exec } from "child_process";
+import textToSpeech from "@google-cloud/text-to-speech";
 import { promises as fs } from "fs";
 import path from "path";
 import crypto from "crypto";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 // Ensure audio directory exists
 const AUDIO_DIR = path.join(process.cwd(), "data", "audio");
+const DEFAULT_TTS_BASE_URL = "http://localhost:4000";
+const MAX_CHARS_PER_REQUEST = 4500;
+
+let ttsClient: textToSpeech.TextToSpeechClient | null = null;
 
 export interface TTSGenerateOptions {
 	text: string;
-	lang?: string; // default: 'vi' for Vietnamese
+	lang?: string;
 	slow?: boolean;
 }
 
+const buildClientFromEnv = (): textToSpeech.TextToSpeechClient => {
+	const rawCredentials = process.env.GCP_TTS_CREDENTIALS_JSON?.trim();
+
+	if (rawCredentials) {
+		const parsed = JSON.parse(rawCredentials) as {
+			project_id?: string;
+			client_email?: string;
+			private_key?: string;
+		};
+
+		if (!parsed.client_email || !parsed.private_key) {
+			throw new Error("GCP_TTS_CREDENTIALS_JSON is missing client_email or private_key");
+		}
+
+		return new textToSpeech.TextToSpeechClient({
+			projectId: process.env.GCP_PROJECT_ID?.trim() || parsed.project_id,
+			credentials: {
+				client_email: parsed.client_email,
+				private_key: parsed.private_key.replace(/\\n/g, "\n")
+			}
+		});
+	}
+
+	// Fall back to Google Application Default Credentials (GOOGLE_APPLICATION_CREDENTIALS)
+	return new textToSpeech.TextToSpeechClient({
+		projectId: process.env.GCP_PROJECT_ID?.trim() || undefined
+	});
+};
+
+const getTtsClient = (): textToSpeech.TextToSpeechClient => {
+	if (!ttsClient) {
+		ttsClient = buildClientFromEnv();
+	}
+
+	return ttsClient;
+};
+
+const normalizeLanguageCode = (lang?: string): string => {
+	const value = (lang ?? "vi-VN").trim();
+	if (!value) {
+		return "vi-VN";
+	}
+
+	if (value.toLowerCase() === "vi") {
+		return "vi-VN";
+	}
+
+	if (value.includes("-")) {
+		return value;
+	}
+
+	return `${value}-${value.toUpperCase()}`;
+};
+
+const resolveVoiceName = (languageCode: string): string => {
+	const fromEnv = process.env.GCP_TTS_VOICE_NAME?.trim();
+	if (fromEnv) {
+		return fromEnv;
+	}
+
+	if (languageCode.startsWith("vi")) {
+		return "vi-VN-Neural2-A";
+	}
+
+	return "";
+};
+
+const chunkText = (input: string, maxChars: number): string[] => {
+	const cleaned = input.replace(/\s+/g, " ").trim();
+	if (!cleaned) {
+		return [];
+	}
+
+	if (cleaned.length <= maxChars) {
+		return [cleaned];
+	}
+
+	const sentences = cleaned.split(/(?<=[.!?])\s+/);
+	const chunks: string[] = [];
+	let current = "";
+
+	for (const sentence of sentences) {
+		if (!sentence) {
+			continue;
+		}
+
+		if (!current) {
+			if (sentence.length <= maxChars) {
+				current = sentence;
+				continue;
+			}
+
+			for (let i = 0; i < sentence.length; i += maxChars) {
+				chunks.push(sentence.slice(i, i + maxChars));
+			}
+			continue;
+		}
+
+		const next = `${current} ${sentence}`;
+		if (next.length <= maxChars) {
+			current = next;
+			continue;
+		}
+
+		chunks.push(current);
+		if (sentence.length <= maxChars) {
+			current = sentence;
+			continue;
+		}
+
+		for (let i = 0; i < sentence.length; i += maxChars) {
+			const segment = sentence.slice(i, i + maxChars);
+			if (segment.length === maxChars) {
+				chunks.push(segment);
+			} else {
+				current = segment;
+			}
+		}
+	}
+
+	if (current) {
+		chunks.push(current);
+	}
+
+	return chunks;
+};
+
+const audioToBuffer = (audioContent: Uint8Array | Buffer | string | null | undefined): Buffer => {
+	if (!audioContent) {
+		throw new Error("Google TTS returned empty audio content");
+	}
+
+	if (Buffer.isBuffer(audioContent)) {
+		return audioContent;
+	}
+
+	if (audioContent instanceof Uint8Array) {
+		return Buffer.from(audioContent);
+	}
+
+	if (typeof audioContent === "string") {
+		return Buffer.from(audioContent, "base64");
+	}
+
+	throw new Error("Unsupported audio content type returned by Google TTS");
+};
+
+const getPublicBaseUrl = (): string => {
+	const value = (process.env.AGENT_BASE_URL || process.env.APP_BASE_URL || DEFAULT_TTS_BASE_URL).trim();
+	return value.replace(/\/$/, "");
+};
+
 /**
- * Generate audio file using gTTS (Google Text-to-Speech)
- * Requires Python gTTS: pip install gtts
+	* Generate audio file using Google Cloud Text-to-Speech API.
  */
 export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 	filename: string;
@@ -25,6 +177,8 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 	path: string;
 }> {
 	const { text, lang = "vi", slow = false } = options;
+	const languageCode = normalizeLanguageCode(lang);
+	const voiceName = resolveVoiceName(languageCode);
 
 	if (!text || text.trim().length === 0) {
 		throw new Error("Text cannot be empty");
@@ -40,17 +194,16 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 	// Generate unique filename based on hash of text + lang
 	const hash = crypto
 		.createHash("md5")
-		.update(`${text}:${lang}:${slow ? "slow" : "fast"}`)
+		.update(`${text}:${languageCode}:${voiceName}:${slow ? "slow" : "fast"}`)
 		.digest("hex");
 	const filename = `${hash}.mp3`;
 	const filePath = path.join(AUDIO_DIR, filename);
-	const relativePath = path.relative(process.cwd(), filePath);
 
 	// Check if file already exists
 	try {
 		await fs.access(filePath);
 		console.log(`[ttsService] Audio file already exists: ${filename}`);
-		const baseUrl = (process.env.AGENT_BASE_URL || process.env.APP_BASE_URL || `http://localhost:4000`).trim();
+		const baseUrl = getPublicBaseUrl();
 		return {
 			filename,
 			url: `${baseUrl}/api/tts/audio/${filename}`,
@@ -61,23 +214,34 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 	}
 
 	try {
-		// Escape text for shell and Python
-		const escapedText = text.replace(/'/g, "'\\''").replace(/"/g, '\\"');
-		
-		// Build gtts command
-		const slowFlag = slow ? "-slow" : "";
-		const command = `gtts-cli '${escapedText}' -l ${lang} ${slowFlag} -o "${filePath}"`;
-
-		console.log(`[ttsService] Generating audio: ${filename}`);
-		const { stdout, stderr } = await execAsync(command);
-
-		if (stderr && stderr.trim()) {
-			console.warn(`[ttsService] gTTS warning: ${stderr}`);
+		const client = getTtsClient();
+		const chunks = chunkText(text, MAX_CHARS_PER_REQUEST);
+		if (chunks.length === 0) {
+			throw new Error("Text is empty after normalization");
 		}
 
-		console.log(`[ttsService] Audio generated successfully: ${filename}`);
+		const buffers: Buffer[] = [];
+		for (const chunk of chunks) {
+			const request: textToSpeech.protos.google.cloud.texttospeech.v1.ISynthesizeSpeechRequest = {
+				input: { text: chunk },
+				voice: {
+					languageCode,
+					name: voiceName || undefined
+				},
+				audioConfig: {
+					audioEncoding: "MP3",
+					speakingRate: slow ? 0.85 : 1.0
+				}
+			};
 
-		const baseUrl = (process.env.AGENT_BASE_URL || process.env.APP_BASE_URL || `http://localhost:4000`).trim();
+			const [response] = await client.synthesizeSpeech(request);
+			buffers.push(audioToBuffer(response.audioContent));
+		}
+
+		await fs.writeFile(filePath, Buffer.concat(buffers));
+		console.log(`[ttsService] Audio generated via Google Cloud TTS: ${filename}`);
+
+		const baseUrl = getPublicBaseUrl();
 		return {
 			filename,
 			url: `${baseUrl}/api/tts/audio/${filename}`,
@@ -85,7 +249,7 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
 		};
 	} catch (error: any) {
 		console.error(`[ttsService] Error generating audio:`, error);
-		const errorMsg = error.stderr || error.message || "Unknown error";
+		const errorMsg = error?.message || "Unknown error";
 		throw new Error(`Failed to generate TTS audio: ${errorMsg}`);
 	}
 }
@@ -94,6 +258,10 @@ export async function generateAudioFile(options: TTSGenerateOptions): Promise<{
  * Get audio file path
  */
 export async function getAudioFilePath(filename: string): Promise<string> {
+	if (!/^[a-f0-9]{32}\.mp3$/i.test(filename)) {
+		throw new Error("Invalid filename format");
+	}
+
 	const filePath = path.join(AUDIO_DIR, filename);
 
 	// Security: prevent directory traversal
