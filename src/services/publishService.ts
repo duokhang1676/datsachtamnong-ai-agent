@@ -18,13 +18,35 @@ export interface PublishPostInput {
   keyword?: string;
 }
 
+const LOCAL_API_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+const normalizeAndValidateApiBaseUrl = (rawValue: string): string => {
+  const normalized = rawValue.trim().replace(/\/$/, "");
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new Error(`API_BASE_URL is invalid: ${normalized}`);
+  }
+
+  const isProduction = (process.env.NODE_ENV ?? "development").trim().toLowerCase() === "production";
+  if (isProduction && LOCAL_API_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new Error(
+      `API_BASE_URL points to a local host (${parsed.hostname}) in production. Set it to your deployed backend URL.`
+    );
+  }
+
+  return normalized;
+};
+
 const getApiBaseUrl = (): string => {
   const value = process.env.API_BASE_URL?.trim();
   if (!value) {
     throw new Error("API_BASE_URL is not configured.");
   }
 
-  return value.replace(/\/$/, "");
+  return normalizeAndValidateApiBaseUrl(value);
 };
 
 const buildBackendUrl = (pathAfterApi: string): string => {

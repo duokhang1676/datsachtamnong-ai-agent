@@ -16,25 +16,56 @@ export interface TTSGenerateOptions {
 	slow?: boolean;
 }
 
+const normalizePrivateKey = (value: string): string => {
+	return value
+		.trim()
+		.replace(/\r\n/g, "\n")
+		.replace(/\\r\\n/g, "\n")
+		.replace(/\\\\n/g, "\n")
+		.replace(/\\n/g, "\n");
+};
+
+const parseCredentialsJson = (rawCredentials: string): {
+	project_id?: string;
+	client_email?: string;
+	private_key?: string;
+} => {
+	const trimmed = rawCredentials.trim();
+	const unwrapped = (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	)
+		? trimmed.slice(1, -1)
+		: trimmed;
+
+	try {
+		return JSON.parse(unwrapped);
+	} catch {
+		// Some environments escape quotes in JSON string values.
+		return JSON.parse(unwrapped.replace(/\\"/g, '"'));
+	}
+};
+
 const buildClientFromEnv = (): textToSpeech.TextToSpeechClient => {
 	const rawCredentials = process.env.GCP_TTS_CREDENTIALS_JSON?.trim();
 
 	if (rawCredentials) {
-		const parsed = JSON.parse(rawCredentials) as {
-			project_id?: string;
-			client_email?: string;
-			private_key?: string;
-		};
+		const parsed = parseCredentialsJson(rawCredentials);
 
 		if (!parsed.client_email || !parsed.private_key) {
 			throw new Error("GCP_TTS_CREDENTIALS_JSON is missing client_email or private_key");
+		}
+
+		const normalizedPrivateKey = normalizePrivateKey(parsed.private_key);
+		if (!normalizedPrivateKey.includes("BEGIN PRIVATE KEY") || !normalizedPrivateKey.includes("END PRIVATE KEY")) {
+			throw new Error("GCP_TTS_CREDENTIALS_JSON.private_key has invalid format. Check newline escaping in Render env.");
 		}
 
 		return new textToSpeech.TextToSpeechClient({
 			projectId: process.env.GCP_PROJECT_ID?.trim() || parsed.project_id,
 			credentials: {
 				client_email: parsed.client_email,
-				private_key: parsed.private_key.replace(/\\n/g, "\n")
+				private_key: normalizedPrivateKey
 			}
 		});
 	}
