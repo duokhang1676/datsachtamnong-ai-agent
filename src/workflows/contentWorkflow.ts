@@ -107,6 +107,11 @@ const getNotificationRecipient = (): string | null => {
 		return reviewer;
 	}
 
+	const notification = (process.env.NOTIFICATION_EMAIL ?? "").trim();
+	if (notification) {
+		return notification;
+	}
+
 	const sender = (process.env.EMAIL_USER ?? "").trim();
 	return sender || null;
 };

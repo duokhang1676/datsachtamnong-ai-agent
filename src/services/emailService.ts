@@ -1,13 +1,9 @@
 import dotenv from "dotenv";
-import nodemailer from "nodemailer";
-import dns from "node:dns";
+import { Resend } from "resend";
 
 dotenv.config();
 
-// Prefer IPv4 globally to avoid cloud environments that cannot route IPv6 SMTP traffic.
-if (typeof dns.setDefaultResultOrder === "function") {
-	dns.setDefaultResultOrder("ipv4first");
-}
+let resendClient: Resend | null = null;
 
 export interface ApprovalEmailInput {
 	id: string;
@@ -27,117 +23,50 @@ export interface PublishedEmailInput {
 	to?: string;
 }
 
-const buildLookupByFamily = (forcedFamily: 4 | 6) => {
-	return (
-		hostname: string,
-		optionsOrCallback: any,
-		maybeCallback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
-	) => {
-		const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
-		if (typeof callback !== "function") {
-			return;
-		}
-
-		dns.lookup(hostname, { family: forcedFamily, all: false, verbatim: false }, callback);
-	};
-};
-
-const createGmailTransporter = () => {
-	const user = process.env.EMAIL_USER;
-	const pass = process.env.EMAIL_PASS;
-
-	if (!user || !pass) {
-		throw new Error("EMAIL_USER and EMAIL_PASS must be set.");
+const getResendClient = (): Resend => {
+	if (resendClient) {
+		return resendClient;
 	}
 
-	const smtpHost = (process.env.SMTP_HOST ?? "smtp.gmail.com").trim();
-	const smtpPort = Number(process.env.SMTP_PORT ?? 465);
-	const smtpSecure = String(process.env.SMTP_SECURE ?? "true").trim().toLowerCase() !== "false";
-	const smtpFamilyRaw = String(process.env.SMTP_FAMILY ?? "").trim();
-	const smtpFamily = smtpFamilyRaw === "4" ? 4 : smtpFamilyRaw === "6" ? 6 : undefined;
-
-	const transportOptions: any = {
-		host: smtpHost,
-		port: Number.isFinite(smtpPort) ? smtpPort : 465,
-		secure: smtpSecure,
-		auth: {
-			user,
-			pass
-		},
-		connectionTimeout: 15000,
-		greetingTimeout: 15000,
-		socketTimeout: 20000,
-		tls: {
-			servername: smtpHost
-		},
-		// Always force IPv4 to avoid Render's IPv6 SMTP routing issues
-		family: 4,
-		lookup: (
-			hostname: string,
-			optionsOrCallback: any,
-			maybeCallback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
-		) => buildLookupByFamily(4)(hostname, optionsOrCallback, maybeCallback)
-	};
-
-	return nodemailer.createTransport(transportOptions);
-};
-
-const shouldRetryWithFallback = (error: unknown): boolean => {
-	const maybe = error as any;
-	const code = typeof maybe?.code === "string" ? maybe.code.trim().toUpperCase() : "";
-	return code === "ETIMEDOUT" || code === "ENETUNREACH" || code === "ECONNRESET";
-};
-
-const createGmailFallbackTransporter = () => {
-	const user = process.env.EMAIL_USER;
-	const pass = process.env.EMAIL_PASS;
-
-	if (!user || !pass) {
-		throw new Error("EMAIL_USER and EMAIL_PASS must be set.");
+	const apiKey = (process.env.RESEND_API_KEY ?? "").trim();
+	if (!apiKey) {
+		throw new Error("RESEND_API_KEY must be set.");
 	}
 
-	const smtpHost = (process.env.SMTP_HOST ?? "smtp.gmail.com").trim();
-	const fallbackPort = Number(process.env.SMTP_FALLBACK_PORT ?? 587);
-
-	const transportOptions: any = {
-		host: smtpHost,
-		port: Number.isFinite(fallbackPort) ? fallbackPort : 587,
-		secure: false,
-		family: 4,
-		auth: {
-			user,
-			pass
-		},
-		connectionTimeout: 15000,
-		greetingTimeout: 15000,
-		socketTimeout: 20000,
-		tls: {
-			servername: smtpHost
-		}
-	};
-
-	// Keep fallback path on IPv4 for cloud providers where IPv6 SMTP route is unstable.
-	transportOptions.lookup = buildLookupByFamily(4);
-
-	return nodemailer.createTransport(transportOptions);
+	resendClient = new Resend(apiKey);
+	return resendClient;
 };
 
-const sendMailWithRetry = async (mailOptions: nodemailer.SendMailOptions): Promise<void> => {
-	const primary = createGmailTransporter();
+const getFromAddress = (): string => {
+	const from = (
+		process.env.RESEND_FROM_EMAIL ??
+		process.env.EMAIL_FROM ??
+		process.env.EMAIL_USER ??
+		""
+	).trim();
 
-	try {
-		await primary.sendMail(mailOptions);
-		return;
-	} catch (error) {
-		if (!shouldRetryWithFallback(error)) {
-			throw error;
-		}
-
-		console.warn("[emailService] Primary SMTP connection failed, retry with fallback config.", error);
+	if (!from) {
+		throw new Error("RESEND_FROM_EMAIL (or EMAIL_FROM) must be set.");
 	}
 
-	const fallback = createGmailFallbackTransporter();
-	await fallback.sendMail(mailOptions);
+	return from;
+};
+
+const sendMail = async (mailOptions: { to: string; subject: string; text: string; html: string }): Promise<void> => {
+	const resend = getResendClient();
+	const from = getFromAddress();
+
+	const response = await resend.emails.send({
+		from,
+		to: mailOptions.to,
+		subject: mailOptions.subject,
+		text: mailOptions.text,
+		html: mailOptions.html
+	});
+
+	if (response.error) {
+		throw new Error(`Resend error: ${response.error.message}`);
+	}
 };
 
 const getApprovalBaseUrl = (): string => {
@@ -164,10 +93,7 @@ export async function sendApprovalEmail(data: any): Promise<void> {
 	const finalApproveLink = approveLink ?? `${baseUrl}/approve/${id}`;
 	const finalRejectLink = rejectLink ?? `${baseUrl}/reject/${id}`;
 
-	const from = process.env.EMAIL_USER as string;
-
-	await sendMailWithRetry({
-		from,
+	await sendMail({
 		to: recipient,
 		subject: `Content Review: ${title}`,
 		text: [
@@ -204,10 +130,7 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 		throw new Error("articleUrl is required.");
 	}
 
-	const from = process.env.EMAIL_USER as string;
-
-	await sendMailWithRetry({
-		from,
+	await sendMail({
 		to: recipient,
 		subject: `Bản tin đã đăng: ${title}`,
 		text: [
