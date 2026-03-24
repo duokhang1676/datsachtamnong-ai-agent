@@ -56,6 +56,38 @@ const getPublishedTemplateId = (): string => {
 	return (process.env.RESEND_PUBLISHED_TEMPLATE_ID ?? "").trim();
 };
 
+const stripHtml = (value: string): string => {
+	return value.replace(/<[^>]*>/g, " ");
+};
+
+const stripDataUriPayload = (value: string): string => {
+	return value.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/g, "[embedded-image]");
+};
+
+const normalizeText = (value: string): string => {
+	return value.replace(/\s+/g, " ").trim();
+};
+
+const sanitizeEmailText = (value: unknown, maxLength: number): string => {
+	const raw = String(value ?? "");
+	const cleaned = normalizeText(stripHtml(stripDataUriPayload(raw)));
+
+	if (cleaned.length <= maxLength) {
+		return cleaned;
+	}
+
+	return `${cleaned.slice(0, Math.max(0, maxLength - 1)).trim()}…`;
+};
+
+const escapeHtml = (value: string): string => {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+};
+
 const sendMail = async (mailOptions: { to: string; subject: string; text: string; html: string }): Promise<void> => {
 	const resend = getResendClient();
 	const from = getFromAddress();
@@ -121,6 +153,9 @@ export async function sendApprovalEmail(data: any): Promise<void> {
 	}
 
 	const recipient = String(to).trim();
+	const safeTitle = sanitizeEmailText(title, 180);
+	const safeSummary = sanitizeEmailText(summary, 600);
+	const safeCategoryName = sanitizeEmailText(categoryName ?? "", 120);
 
 	const baseUrl = getApprovalBaseUrl();
 	const finalApproveLink = approveLink ?? `${baseUrl}/approve/${id}`;
@@ -128,20 +163,20 @@ export async function sendApprovalEmail(data: any): Promise<void> {
 
 	await sendMail({
 		to: recipient,
-		subject: `Content Review: ${title}`,
+		subject: `Content Review: ${safeTitle}`,
 		text: [
-			`Title: ${title}`,
-			categoryName ? `Category: ${categoryName}` : "",
+			`Title: ${safeTitle}`,
+			safeCategoryName ? `Category: ${safeCategoryName}` : "",
 			"",
-			`Summary: ${summary}`,
+			`Summary: ${safeSummary}`,
 			"",
 			`Approve: ${finalApproveLink}`,
 			`Reject: ${finalRejectLink}`
 		].join("\n"),
 		html: `
-		  <h2>${title}</h2>
-		  ${categoryName ? `<p><strong>Category:</strong> ${categoryName}</p>` : ""}
-		  <p><strong>Summary:</strong> ${summary}</p>
+		  <h2>${escapeHtml(safeTitle)}</h2>
+		  ${safeCategoryName ? `<p><strong>Category:</strong> ${escapeHtml(safeCategoryName)}</p>` : ""}
+		  <p><strong>Summary:</strong> ${escapeHtml(safeSummary)}</p>
 		  <p>
 		    <a href="${finalApproveLink}" style="margin-right: 12px;">Approve</a>
 		    <a href="${finalRejectLink}">Reject</a>
@@ -158,6 +193,9 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 	}
 
 	const recipient = String(to).trim();
+	const safeTitle = sanitizeEmailText(title, 180);
+	const safeSummary = sanitizeEmailText(summary, 600);
+	const safeCategoryName = sanitizeEmailText(categoryName ?? "", 120);
 	const normalizedArticleUrl = String(articleUrl ?? "").trim();
 	if (!normalizedArticleUrl) {
 		throw new Error("articleUrl is required.");
@@ -167,12 +205,12 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 	if (templateId) {
 		await sendTemplateMail({
 			to: recipient,
-			subject: `Bản tin đã đăng: ${title}`,
+			subject: `Bản tin đã đăng: ${safeTitle}`,
 			templateId,
 			variables: {
-				title,
-				summary,
-				categoryName: String(categoryName ?? "").trim(),
+				title: safeTitle,
+				summary: safeSummary,
+				categoryName: safeCategoryName,
 				articleUrl: normalizedArticleUrl
 			}
 		});
@@ -181,19 +219,19 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 
 	await sendMail({
 		to: recipient,
-		subject: `Bản tin đã đăng: ${title}`,
+		subject: `Bản tin đã đăng: ${safeTitle}`,
 		text: [
-			`Tiêu đề: ${title}`,
-			categoryName ? `Danh mục: ${categoryName}` : "",
+			`Tiêu đề: ${safeTitle}`,
+			safeCategoryName ? `Danh mục: ${safeCategoryName}` : "",
 			"",
-			`Tóm tắt: ${summary}`,
+			`Tóm tắt: ${safeSummary}`,
 			"",
 			`Đường dẫn bản tin: ${normalizedArticleUrl}`
 		].join("\n"),
 		html: `
-		  <h2>${title}</h2>
-		  ${categoryName ? `<p><strong>Danh mục:</strong> ${categoryName}</p>` : ""}
-		  <p><strong>Tóm tắt:</strong> ${summary}</p>
+		  <h2>${escapeHtml(safeTitle)}</h2>
+		  ${safeCategoryName ? `<p><strong>Danh mục:</strong> ${escapeHtml(safeCategoryName)}</p>` : ""}
+		  <p><strong>Tóm tắt:</strong> ${escapeHtml(safeSummary)}</p>
 		  <p>
 		    <a href="${normalizedArticleUrl}">Xem bản tin đã đăng</a>
 		  </p>
