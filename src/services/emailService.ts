@@ -69,17 +69,15 @@ const createGmailTransporter = () => {
 		socketTimeout: 20000,
 		tls: {
 			servername: smtpHost
-		}
-	};
-
-	if (smtpFamily) {
-		transportOptions.family = smtpFamily;
-		transportOptions.lookup = (
+		},
+		// Always force IPv4 to avoid Render's IPv6 SMTP routing issues
+		family: 4,
+		lookup: (
 			hostname: string,
 			optionsOrCallback: any,
 			maybeCallback?: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
-		) => buildLookupByFamily(smtpFamily as 4 | 6)(hostname, optionsOrCallback, maybeCallback);
-	}
+		) => buildLookupByFamily(4)(hostname, optionsOrCallback, maybeCallback)
+	};
 
 	return nodemailer.createTransport(transportOptions);
 };
