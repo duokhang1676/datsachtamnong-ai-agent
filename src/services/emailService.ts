@@ -52,6 +52,10 @@ const getFromAddress = (): string => {
 	return from;
 };
 
+const getPublishedTemplateId = (): string => {
+	return (process.env.RESEND_PUBLISHED_TEMPLATE_ID ?? "").trim();
+};
+
 const sendMail = async (mailOptions: { to: string; subject: string; text: string; html: string }): Promise<void> => {
 	const resend = getResendClient();
 	const from = getFromAddress();
@@ -66,6 +70,35 @@ const sendMail = async (mailOptions: { to: string; subject: string; text: string
 
 	if (response.error) {
 		throw new Error(`Resend error: ${response.error.message}`);
+	}
+};
+
+const sendTemplateMail = async (mailOptions: {
+	to: string;
+	subject: string;
+	templateId: string;
+	variables: {
+		title: string;
+		summary: string;
+		categoryName: string;
+		articleUrl: string;
+	};
+}): Promise<void> => {
+	const resend = getResendClient();
+	const from = getFromAddress();
+
+	const response = await resend.emails.send({
+		from,
+		to: mailOptions.to,
+		subject: mailOptions.subject,
+		template: {
+			id: mailOptions.templateId,
+			variables: mailOptions.variables
+		}
+	} as any);
+
+	if (response.error) {
+		throw new Error(`Resend template error: ${response.error.message}`);
 	}
 };
 
@@ -128,6 +161,22 @@ export async function sendPublishedEmail(data: PublishedEmailInput): Promise<voi
 	const normalizedArticleUrl = String(articleUrl ?? "").trim();
 	if (!normalizedArticleUrl) {
 		throw new Error("articleUrl is required.");
+	}
+
+	const templateId = getPublishedTemplateId();
+	if (templateId) {
+		await sendTemplateMail({
+			to: recipient,
+			subject: `Bản tin đã đăng: ${title}`,
+			templateId,
+			variables: {
+				title,
+				summary,
+				categoryName: String(categoryName ?? "").trim(),
+				articleUrl: normalizedArticleUrl
+			}
+		});
+		return;
 	}
 
 	await sendMail({
