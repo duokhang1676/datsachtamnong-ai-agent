@@ -13,6 +13,43 @@ import { getAgentContextConfig } from "../services/agentContextConfigService.js"
 const DEFAULT_CATEGORY_ID = process.env.DEFAULT_NEWS_CATEGORY_ID ?? "000000000000000000000000";
 const ARTICLE_SIMILARITY_THRESHOLD = 0.2;
 
+const toCompactTimestamp = (): string => {
+	const now = new Date();
+	const yyyy = now.getFullYear();
+	const mm = String(now.getMonth() + 1).padStart(2, "0");
+	const dd = String(now.getDate()).padStart(2, "0");
+	const hh = String(now.getHours()).padStart(2, "0");
+	const min = String(now.getMinutes()).padStart(2, "0");
+
+	return `${yyyy}${mm}${dd}-${hh}${min}`;
+};
+
+const resolveUniqueSeoTitle = (seoTitle: string, knownTitles: string[]): string => {
+	const base = seoTitle.trim();
+	if (!base) {
+		return seoTitle;
+	}
+
+	if (!isDuplicateTitle(base, knownTitles)) {
+		return base;
+	}
+
+	const timestamp = toCompactTimestamp();
+	const firstCandidate = `${base} ${timestamp}`;
+	if (!isDuplicateTitle(firstCandidate, knownTitles)) {
+		return firstCandidate;
+	}
+
+	for (let suffix = 2; suffix <= 30; suffix += 1) {
+		const candidate = `${base} ${timestamp}-${suffix}`;
+		if (!isDuplicateTitle(candidate, knownTitles)) {
+			return candidate;
+		}
+	}
+
+	return `${base} ${timestamp}-${randomUUID().slice(0, 8)}`;
+};
+
 const shuffle = <T>(items: T[]): T[] => {
 	const cloned = [...items];
 	for (let index = cloned.length - 1; index > 0; index -= 1) {
@@ -255,18 +292,24 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 		execute: async ({ inputData }) => {
 			const seo = await optimizeSEO(inputData.article);
 			const knownTitles = await getKnownArticleTitles();
-			if (isDuplicateTitle(seo.seoTitle, knownTitles)) {
-				throw new Error(`Generated title is duplicate: ${seo.seoTitle}. Please rerun workflow for a new topic.`);
+			const uniqueSeoTitle = resolveUniqueSeoTitle(seo.seoTitle, knownTitles);
+			if (uniqueSeoTitle !== seo.seoTitle) {
+				console.warn(`[content-workflow] Duplicate SEO title detected. Auto-adjusted title to: "${uniqueSeoTitle}"`);
 			}
+
+			const finalSeo = {
+				...seo,
+				seoTitle: uniqueSeoTitle
+			};
 
 			const articleId = randomUUID();
 
 			setLatestArticle({
 				id: articleId,
-				seoTitle: seo.seoTitle,
+				seoTitle: finalSeo.seoTitle,
 				article: inputData.article,
-				summary: seo.summary,
-				tags: seo.tags,
+				summary: finalSeo.summary,
+				tags: finalSeo.tags,
 				categoryId: inputData.selectedCategory.id,
 				categoryName: inputData.selectedCategory.name,
 				categoryDescription: inputData.selectedCategory.description,
@@ -274,10 +317,10 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 			});
 
 			const published = await publishPost({
-				seoTitle: seo.seoTitle,
+				seoTitle: finalSeo.seoTitle,
 				article: inputData.article,
-				summary: seo.summary,
-				tags: seo.tags,
+				summary: finalSeo.summary,
+				tags: finalSeo.tags,
 				categoryId: inputData.selectedCategory.id,
 				categoryName: inputData.selectedCategory.name,
 				categoryDescription: inputData.selectedCategory.description,
@@ -293,8 +336,8 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 				} else {
 				try {
 					await sendPublishedEmail({
-						title: seo.seoTitle,
-						summary: seo.summary,
+						title: finalSeo.seoTitle,
+						summary: finalSeo.summary,
 						categoryName: inputData.selectedCategory.name,
 						articleUrl,
 						to: recipient
@@ -310,7 +353,7 @@ const buildContentWorkflow = () => loadMastraWorkflows().then(({ createStep, cre
 			return {
 				topic: inputData.topic,
 				article: inputData.article,
-				seo
+				seo: finalSeo
 			};
 		}
 	});
